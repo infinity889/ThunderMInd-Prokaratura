@@ -1,6 +1,9 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from '../shell/AppLayout'
+import { AuthLayout } from '../shell/AuthLayout'
 import { AnalyticsPage } from '../../pages/analytics/AnalyticsPage'
+import { LoginPage } from '../../pages/auth/LoginPage'
+import { RegisterPage } from '../../pages/auth/RegisterPage'
 import { CamerasPage } from '../../pages/cameras/CamerasPage'
 import { DataSourcesPage } from '../../pages/data-sources/DataSourcesPage'
 import { HelpPage } from '../../pages/help/HelpPage'
@@ -12,6 +15,10 @@ import { SettingsPage } from '../../pages/settings/SettingsPage'
 export function AppRouter() {
   return (
     <Routes>
+      <Route element={<AuthLayout />}>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+      </Route>
       <Route element={<AppLayout />}>
         <Route index element={<Navigate to="/map" replace />} />
         <Route path="/map" element={<MapPage />} />

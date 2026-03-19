@@ -188,6 +188,15 @@ function dangerColors(level: DangerLevel) {
   }
 }
 
+type DistrictCard = {
+  id: string
+  name: string
+  danger: DangerLevel
+  incidentsCount: number
+  camerasCount: number
+  objectsCount: number
+}
+
 function layerLabel(k: LayerKey) {
   switch (k) {
     case 'districts':
@@ -218,6 +227,25 @@ export function MapPage() {
       if (id && name) map.set(id, name)
     }
     return map
+  }, [])
+
+  const districtCards = useMemo((): DistrictCard[] => {
+    const cards: DistrictCard[] = []
+    for (const f of DISTRICTS.features) {
+      const id = (f.properties as { id?: string }).id
+      const name = (f.properties as { name?: string }).name
+      if (!id || !name) continue
+      const danger = DISTRICT_DANGER[id] ?? 'medium'
+      cards.push({
+        id,
+        name,
+        danger,
+        incidentsCount: INCIDENTS.filter((i) => i.districtId === id).length,
+        camerasCount: CAMERAS.filter((c) => c.districtId === id).length,
+        objectsCount: OBJECTS.filter((o) => o.districtId === id).length,
+      })
+    }
+    return cards
   }, [])
 
   const selectedSummary = useMemo(() => {
@@ -393,12 +421,68 @@ export function MapPage() {
         <aside className="rounded-2xl border border-slate-200 bg-white p-4">
           {!selectedSummary ? (
             <div className="text-sm text-slate-600">
-              <div className="font-semibold text-slate-900">Сводка по району</div>
-              <div className="mt-2">
-                Кликните по району на карте — здесь появится количество инцидентов, камер и объектов.
+              <div className="font-semibold text-slate-900">Районы Атырау</div>
+              <div className="mt-2 text-sm text-slate-600">
+                Нажмите на карточку района или кликните по району на карте.
               </div>
+
+              <div className="mt-3 grid gap-2">
+                {districtCards.map((d) => {
+                  const colors = dangerColors(d.danger)
+                  return (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => setSelectedDistrictId(d.id)}
+                      className="group w-full rounded-2xl border border-slate-200 bg-white p-3 text-left hover:bg-slate-50"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-slate-900">
+                            {d.name}
+                          </div>
+                          <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                            <span
+                              className="inline-block size-3 rounded-sm"
+                              style={{ background: colors.fill }}
+                              aria-hidden
+                            />
+                            <span className="capitalize">
+                              опасность: {dangerLabel(d.danger)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-xs text-slate-500">ID: {d.id}</div>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-3 gap-2">
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
+                          <div className="text-[11px] text-slate-500">Инциденты</div>
+                          <div className="mt-0.5 text-base font-semibold text-slate-900">
+                            {d.incidentsCount}
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
+                          <div className="text-[11px] text-slate-500">Камеры</div>
+                          <div className="mt-0.5 text-base font-semibold text-slate-900">
+                            {d.camerasCount}
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
+                          <div className="text-[11px] text-slate-500">Объекты</div>
+                          <div className="mt-0.5 text-base font-semibold text-slate-900">
+                            {d.objectsCount}
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+
               <div className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-                Под демо: районы — условные. В боевой версии будут реальные границы и источники.
+                Сейчас уровни опасности заданы вручную (зел/жёлт/красн). Позже их
+                будет рассчитывать AI‑анализ.
               </div>
             </div>
           ) : (
@@ -463,6 +547,14 @@ export function MapPage() {
                 onClick={() => alert('Скоро: запуск еженедельного AI‑анализа для выбранного района')}
               >
                 Запустить AI‑анализ района (демо)
+              </button>
+
+              <button
+                type="button"
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"
+                onClick={() => setSelectedDistrictId(null)}
+              >
+                Вернуться к списку районов
               </button>
             </div>
           )}
