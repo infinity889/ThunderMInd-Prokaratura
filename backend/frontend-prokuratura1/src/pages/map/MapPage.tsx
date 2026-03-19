@@ -86,7 +86,11 @@ const DISTRICTS: FeatureCollection = ((): FeatureCollection => {
     features: fc.features.map((f, idx) => {
       const props = (f.properties ?? {}) as Record<string, unknown>
       const name = String(props.NAME ?? props.name ?? `Район ${idx + 1}`)
-      const id = String(props.id ?? props.ID ?? props.NAME ?? f.id ?? idx)
+      const id = String(
+        props.id ??
+          props.ID ??
+          (props.NAME ? `${props.NAME}-${idx}` : f.id ?? `district-${idx}`),
+      )
       return { ...f, properties: { ...props, id, name } }
     }),
   }
