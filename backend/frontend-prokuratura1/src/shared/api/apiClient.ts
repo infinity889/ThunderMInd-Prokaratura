@@ -25,10 +25,12 @@ async function readBodySafe(res: Response) {
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const base = env.apiBaseUrl?.replace(/\/+$/, '') ?? ''
   const url = `${base}${path.startsWith('/') ? path : `/${path}`}`
+  const token = localStorage.getItem('token')
   const res = await fetch(url, {
     ...init,
     headers: {
       'content-type': 'application/json',
+      ...(token ? { Authorization: `Token ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
   })
@@ -46,4 +48,3 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   const body = await readBodySafe(res)
   return body as T
 }
-

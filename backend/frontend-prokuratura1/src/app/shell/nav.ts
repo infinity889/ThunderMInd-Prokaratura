@@ -8,6 +8,7 @@ import {
   Map,
   Settings,
   ShieldAlert,
+  Users,
 } from 'lucide-react'
 
 export type NavItem = {
@@ -15,6 +16,7 @@ export type NavItem = {
   label: string
   description: string
   icon: LucideIcon
+  adminOnly?: boolean
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -49,16 +51,25 @@ export const NAV_ITEMS: NavItem[] = [
     icon: BarChart3,
   },
   {
+    to: '/admin-panel',
+    label: 'Панель админа',
+    description: 'Управление пользователями и правами',
+    icon: Users,
+    adminOnly: true,
+  },
+  {
     to: '/data-sources',
     label: 'Источники данных',
     description: 'Ручное управление источниками',
     icon: Database,
+    adminOnly: true,
   },
   {
     to: '/settings',
     label: 'Настройки',
     description: 'Город, отображение, уведомления',
     icon: Settings,
+    adminOnly: true,
   },
   {
     to: '/help',

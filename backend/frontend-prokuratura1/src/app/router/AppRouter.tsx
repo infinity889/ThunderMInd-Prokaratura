@@ -2,6 +2,7 @@ import React from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from '../shell/AppLayout'
 import { AuthLayout } from '../shell/AuthLayout'
+import { AdminPanelPage } from '../../pages/admin/AdminPanelPage'
 import { AnalyticsPage } from '../../pages/analytics/AnalyticsPage'
 import { LoginPage } from '../../pages/auth/LoginPage'
 import { RegisterPage } from '../../pages/auth/RegisterPage'
@@ -34,6 +35,7 @@ export function AppRouter() {
         <Route path="/cameras" element={<CamerasPage />} />
         <Route path="/objects" element={<ObjectsPage />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
+        <Route path="/admin-panel" element={<AdminPanelPage />} />
         <Route path="/data-sources" element={<DataSourcesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/help" element={<HelpPage />} />

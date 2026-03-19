@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import { NAV_ITEMS } from './nav'
 import { Search } from 'lucide-react'
+import { useAdmin } from '../../shared/lib/useAdmin'
 
 function useCurrentPageTitle() {
   const location = useLocation()
@@ -10,6 +11,8 @@ function useCurrentPageTitle() {
 
 export function TopBar() {
   const title = useCurrentPageTitle()
+  const isAdmin = useAdmin()
+  const username = localStorage.getItem('username')
 
   return (
     <header className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between">
@@ -30,17 +33,27 @@ export function TopBar() {
           />
         </div>
         {localStorage.getItem('token') ? (
-          <button
-            onClick={() => {
-              localStorage.removeItem('token');
-              localStorage.removeItem('username');
-              localStorage.removeItem('is_admin');
-              window.location.href = '/';
-            }}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"
-          >
-            Выйти
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <span className="text-sm font-medium text-slate-700">{username}</span>
+              {isAdmin && (
+                <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-bold text-indigo-700">
+                  Админ
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => {
+                localStorage.removeItem('token');
+                localStorage.removeItem('username');
+                localStorage.removeItem('is_admin');
+                window.location.href = '/';
+              }}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"
+            >
+              Выйти
+            </button>
+          </div>
         ) : (
           <Link
             to="/login"

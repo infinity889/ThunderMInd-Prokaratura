@@ -9,6 +9,7 @@ if (typeof window !== 'undefined') {
 import '@geoman-io/leaflet-geoman-free'
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
 import { useEffect, useMemo, useState } from 'react'
+import { useAdmin } from '../../shared/lib/useAdmin'
 import { CircleMarker, GeoJSON, MapContainer, Popup, TileLayer, useMap } from 'react-leaflet'
 import type { FeatureCollection } from 'geojson'
 import { PageShell } from '../_ui/PageShell'
@@ -18,7 +19,8 @@ function GeomanControls() {
   const map = useMap();
   useEffect(() => {
     try {
-      if (map.pm) {
+      const isAdmin = localStorage.getItem('is_admin') === 'true';
+      if (map.pm && isAdmin) {
         map.pm.addControls({
           position: 'topleft',
           drawCircle: false,
@@ -32,12 +34,30 @@ function GeomanControls() {
           dragMode: true,
           cutPolygon: false,
           removalMode: true,
+          rotateMode: true,
         });
         
         map.on('pm:create', (e: any) => {
           console.log('Shape created', e.layer);
           alert('Новый район добавлен локально! (Для сохранения необходима интеграция с бекендом)');
         });
+      } else if (map.pm && !isAdmin) {
+         // ensure controls are removed if previously added but admin status changed
+         map.pm.addControls({
+           position: 'topleft',
+           drawCircle: false,
+           drawMarker: false,
+           drawCircleMarker: false,
+           drawPolyline: false,
+           drawRectangle: false,
+           drawPolygon: false,
+           drawText: false,
+           editMode: false,
+           dragMode: false,
+           cutPolygon: false,
+           removalMode: false,
+           rotateMode: false,
+         });
       }
     } catch (err) {
       console.error('Geoman setup error', err);
@@ -181,6 +201,7 @@ function layerLabel(k: LayerKey) {
 }
 
 export function MapPage() {
+  const isAdmin = useAdmin()
   const [layers, setLayers] = useState<Record<LayerKey, boolean>>({
     districts: true,
     incidents: true,
@@ -388,6 +409,12 @@ export function MapPage() {
                         <div className="mt-1 text-xs text-slate-500">
                           Район: {districtNameById.get(i.districtId) ?? i.districtId}
                         </div>
+                        {isAdmin && (
+                          <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2">
+                            <button className="rounded-lg bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-100" onClick={() => alert('Инструмент админа: Редактировать инцидент')}>Изменить</button>
+                            <button className="rounded-lg bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100" onClick={() => alert('Инструмент админа: Удалить инцидент')}>Удалить</button>
+                          </div>
+                        )}
                       </div>
                     </Popup>
                   </CircleMarker>
@@ -418,6 +445,12 @@ export function MapPage() {
                         <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
                           Просмотр в реальном времени появится после подключения backend.
                         </div>
+                        {isAdmin && (
+                          <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2">
+                            <button className="rounded-lg bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-100" onClick={() => alert('Инструмент админа: Настройки камеры')}>Настроить</button>
+                            <button className="rounded-lg bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100" onClick={() => alert('Инструмент админа: Удалить камеру')}>Удалить</button>
+                          </div>
+                        )}
                       </div>
                     </Popup>
                   </CircleMarker>
@@ -439,6 +472,12 @@ export function MapPage() {
                         <div className="mt-1 text-xs text-slate-500">
                           Район: {districtNameById.get(o.districtId) ?? o.districtId}
                         </div>
+                        {isAdmin && (
+                          <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2">
+                            <button className="rounded-lg bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-100" onClick={() => alert('Инструмент админа: Редактировать объект')}>Изменить</button>
+                            <button className="rounded-lg bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100" onClick={() => alert('Инструмент админа: Удалить объект')}>Удалить</button>
+                          </div>
+                        )}
                       </div>
                     </Popup>
                   </CircleMarker>
@@ -570,13 +609,15 @@ export function MapPage() {
                 )}
               </div>
 
-              <button
-                type="button"
-                className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
-                onClick={() => alert('Скоро: запуск еженедельного AI‑анализа для выбранного района')}
-              >
-                Запустить AI‑анализ района (демо)
-              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  className="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                  onClick={() => alert('Скоро: запуск еженедельного AI‑анализа для выбранного района')}
+                >
+                  Запустить AI‑анализ района (демо)
+                </button>
+              )}
 
               <button
                 type="button"
