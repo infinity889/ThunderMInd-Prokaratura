@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState } from 'react';
 
 type Language = 'ru' | 'kz';
@@ -29,7 +30,14 @@ const translations: Record<Language, Record<string, string>> = {
     btn_register: 'Зарегистрироваться',
     fio: 'ФИО',
     password_repeat: 'Повторите пароль',
-    password_mismatch: 'Пароли не совпадают'
+    password_mismatch: 'Пароли не совпадают',
+    profile: 'Профиль',
+    profile_subtitle: 'Данные пользователя и настройки аккаунта',
+    organization: 'Организация',
+    role: 'Роль',
+    save: 'Сохранить',
+    edit: 'Редактировать',
+    cancel: 'Отмена'
   },
   kz: {
     login: 'Кіру',
@@ -51,7 +59,14 @@ const translations: Record<Language, Record<string, string>> = {
     btn_register: 'Тіркелу',
     fio: 'Аты-жөні',
     password_repeat: 'Құпия сөзді қайталаңыз',
-    password_mismatch: 'Құпия сөздер сәйкес келмейді'
+    password_mismatch: 'Құпия сөздер сәйкес келмейді',
+    profile: 'Профиль',
+    profile_subtitle: 'Пайдаланушы деректері және аккаунт баптаулары',
+    organization: 'Ұйым',
+    role: 'Рөл',
+    save: 'Сақтау',
+    edit: 'Өңдеу',
+    cancel: 'Болдырмау'
   }
 };
 

@@ -12,6 +12,7 @@ import { HelpPage } from '../../pages/help/HelpPage'
 import { IncidentsPage } from '../../pages/incidents/IncidentsPage'
 import { MapPage } from '../../pages/map/MapPage'
 import { ObjectsPage } from '../../pages/objects/ObjectsPage'
+import { ProfilePage } from '../../pages/profile/ProfilePage'
 import { SettingsPage } from '../../pages/settings/SettingsPage'
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -36,6 +37,7 @@ export function AppRouter() {
         <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/data-sources" element={<DataSourcesPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
         <Route path="/help" element={<HelpPage />} />
         <Route path="*" element={<Navigate to="/map" replace />} />
       </Route>

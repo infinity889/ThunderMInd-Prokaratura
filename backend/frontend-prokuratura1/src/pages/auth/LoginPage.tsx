@@ -3,6 +3,12 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useLanguage } from '../../shared/lib/LanguageContext'
 import { apiFetch } from '../../shared/api/apiClient'
 
+type LoginResponse = {
+  token: string
+  username: string
+  is_admin: boolean
+}
+
 export function LoginPage() {
   const navigate = useNavigate()
   const { t } = useLanguage()
@@ -27,7 +33,7 @@ export function LoginPage() {
 
     setLoading(true)
     try {
-      const data = await apiFetch<any>('/users/login/', {
+      const data = await apiFetch<LoginResponse>('/users/login/', {
         method: 'POST',
         body: JSON.stringify({ username, password })
       })

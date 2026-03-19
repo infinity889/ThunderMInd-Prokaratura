@@ -3,6 +3,11 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useLanguage } from '../../shared/lib/LanguageContext'
 import { apiFetch } from '../../shared/api/apiClient'
 
+type RegisterResponse = {
+  id?: number
+  username?: string
+}
+
 export function RegisterPage() {
   const navigate = useNavigate()
   const { t } = useLanguage()
@@ -30,7 +35,7 @@ export function RegisterPage() {
 
     setLoading(true)
     try {
-      await apiFetch<any>('/users/register/', {
+      await apiFetch<RegisterResponse>('/users/register/', {
         method: 'POST',
         body: JSON.stringify({ username, password })
       })

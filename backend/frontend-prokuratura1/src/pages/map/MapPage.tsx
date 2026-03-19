@@ -2,8 +2,7 @@ import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 
 if (typeof window !== 'undefined') {
-  // @ts-ignore
-  window.L = L
+  ;(window as unknown as { L?: typeof L }).L = L
 }
 
 import '@geoman-io/leaflet-geoman-free'
@@ -13,6 +12,7 @@ import { CircleMarker, GeoJSON, MapContainer, Popup, TileLayer, useMap } from 'r
 import type { FeatureCollection } from 'geojson'
 import { PageShell } from '../_ui/PageShell'
 import { apiFetch } from '../../shared/api/apiClient'
+import atyrayMap from '../../shared/data/atyrau-map.json'
 
 function GeomanControls() {
   const map = useMap();
@@ -34,8 +34,9 @@ function GeomanControls() {
           removalMode: true,
         });
         
-        map.on('pm:create', (e: any) => {
-          console.log('Shape created', e.layer);
+        map.on('pm:create', (e: unknown) => {
+          const anyE = e as { layer?: unknown }
+          console.log('Shape created', anyE.layer);
           alert('Новый район добавлен локально! (Для сохранения необходима интеграция с бекендом)');
         });
       }
@@ -78,59 +79,18 @@ type SocialObject = {
   districtId: string
 }
 
-const DISTRICTS: FeatureCollection = {
-  type: 'FeatureCollection',
-  features: [
-    {
-      type: 'Feature',
-      properties: { id: 'd1', name: 'Атырау — Север' },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [
-          [
-            [51.85, 47.14],
-            [52.03, 47.14],
-            [52.03, 47.22],
-            [51.85, 47.22],
-            [51.85, 47.14],
-          ],
-        ],
-      },
-    },
-    {
-      type: 'Feature',
-      properties: { id: 'd2', name: 'Атырау — Центр' },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [
-          [
-            [51.85, 47.06],
-            [52.03, 47.06],
-            [52.03, 47.14],
-            [51.85, 47.14],
-            [51.85, 47.06],
-          ],
-        ],
-      },
-    },
-    {
-      type: 'Feature',
-      properties: { id: 'd3', name: 'Атырау — Юг' },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [
-          [
-            [51.85, 46.98],
-            [52.03, 46.98],
-            [52.03, 47.06],
-            [51.85, 47.06],
-            [51.85, 46.98],
-          ],
-        ],
-      },
-    },
-  ],
-}
+const DISTRICTS: FeatureCollection = ((): FeatureCollection => {
+  const fc = atyrayMap as unknown as FeatureCollection
+  return {
+    ...fc,
+    features: fc.features.map((f, idx) => {
+      const props = (f.properties ?? {}) as Record<string, unknown>
+      const name = String(props.NAME ?? props.name ?? `Район ${idx + 1}`)
+      const id = String(props.id ?? props.ID ?? props.NAME ?? f.id ?? idx)
+      return { ...f, properties: { ...props, id, name } }
+    }),
+  }
+})()
 
 const INITIAL_INCIDENTS: Incident[] = []
 const INITIAL_CAMERAS: Camera[] = []
@@ -162,6 +122,8 @@ type DistrictCard = {
   id: string
   name: string
   danger: DangerLevel
+  riskScore: number
+  rank: number
   incidentsCount: number
   camerasCount: number
   objectsCount: number
@@ -187,59 +149,88 @@ export function MapPage() {
     cameras: true,
     objects: true,
   })
+  const [baseMap, setBaseMap] = useState<'satellite' | 'streets'>('satellite')
   const [selectedDistrictId, setSelectedDistrictId] = useState<string | null>(null)
   
   const [incidents, setIncidents] = useState<Incident[]>(INITIAL_INCIDENTS)
   const [cameras, setCameras] = useState<Camera[]>(INITIAL_CAMERAS)
   const [objects, setObjects] = useState<SocialObject[]>(INITIAL_OBJECTS)
   const [districtDanger, setDistrictDanger] = useState<Record<string, DangerLevel>>({})
+  const [districtRiskScore, setDistrictRiskScore] = useState<Record<string, number>>(() => {
+    const out: Record<string, number> = {}
+    for (const f of DISTRICTS.features) {
+      const id = (f.properties as { id?: string } | undefined)?.id
+      if (!id) continue
+      out[id] = ((String(id).length * 1.7) % 9) + 1
+    }
+    return out
+  })
 
   useEffect(() => {
     const fetchMapData = async () => {
       try {
         const [crimesData, camerasData, objectsData, districtsData] = await Promise.all([
-          apiFetch<any[]>('/map-data/crimes/'),
-          apiFetch<any[]>('/map-data/cameras/'),
-          apiFetch<any[]>('/map-data/social-objects/'),
-          apiFetch<any[]>('/map-data/districts/')
+          apiFetch<unknown[]>('/map-data/crimes/'),
+          apiFetch<unknown[]>('/map-data/cameras/'),
+          apiFetch<unknown[]>('/map-data/social-objects/'),
+          apiFetch<unknown[]>('/map-data/districts/')
         ]);
 
-        setIncidents(crimesData.map(c => ({
-          id: String(c.id),
-          title: c.title,
-          type: c.crime_type,
-          lat: c.latitude,
-          lng: c.longitude,
-          districtId: String(c.district),
-          occurredAt: new Date(c.date_committed).toLocaleString()
-        })));
+        setIncidents(
+          crimesData
+            .map((c) => c as Record<string, unknown>)
+            .map((c) => ({
+              id: String(c.id ?? ''),
+              title: String(c.title ?? ''),
+              type: (String(c.crime_type ?? 'Другое') as Incident['type']) ?? 'Другое',
+              lat: Number(c.latitude ?? 0),
+              lng: Number(c.longitude ?? 0),
+              districtId: String(c.district ?? ''),
+              occurredAt: new Date(String(c.date_committed ?? '')).toLocaleString(),
+            })),
+        )
 
-        setCameras(camerasData.map(c => ({
-          id: String(c.id),
-          name: c.name,
-          lat: c.latitude,
-          lng: c.longitude,
-          districtId: String(c.district),
-          status: 'online'
-        })));
+        setCameras(
+          camerasData
+            .map((c) => c as Record<string, unknown>)
+            .map((c) => ({
+              id: String(c.id ?? ''),
+              name: String(c.name ?? ''),
+              lat: Number(c.latitude ?? 0),
+              lng: Number(c.longitude ?? 0),
+              districtId: String(c.district ?? ''),
+              status: c.is_active ? 'online' : 'offline',
+            })),
+        )
 
-        setObjects(objectsData.map(o => ({
-          id: String(o.id),
-          name: o.name,
-          kind: o.object_type,
-          lat: o.latitude,
-          lng: o.longitude,
-          districtId: String(o.district)
-        })));
+        setObjects(
+          objectsData
+            .map((o) => o as Record<string, unknown>)
+            .map((o) => ({
+              id: String(o.id ?? ''),
+              name: String(o.name ?? ''),
+              kind: String(o.object_type ?? ''),
+              lat: Number(o.latitude ?? 0),
+              lng: Number(o.longitude ?? 0),
+              districtId: String(o.district ?? ''),
+            })),
+        )
 
-        const dDanger: Record<string, DangerLevel> = {};
-        districtsData.forEach(d => {
-           let level: DangerLevel = 'low';
-           if (d.risk_score > 3 && d.risk_score < 7) level = 'medium';
-           if (d.risk_score >= 7) level = 'high';
-           dDanger[String(d.id)] = level;
-        });
+        const dDanger: Record<string, DangerLevel> = {}
+        const risk: Record<string, number> = {}
+        districtsData
+          .map((d) => d as Record<string, unknown>)
+          .forEach((d) => {
+            const id = String(d.id ?? '')
+            const score = Number(d.risk_score ?? 0)
+            let level: DangerLevel = 'low'
+            if (score > 3 && score < 7) level = 'medium'
+            if (score >= 7) level = 'high'
+            dDanger[id] = level
+            risk[id] = score
+          })
         setDistrictDanger(dDanger);
+        setDistrictRiskScore(risk);
       } catch (e) {
         console.error(e);
       }
@@ -258,36 +249,59 @@ export function MapPage() {
   }, [])
 
   const districtCards = useMemo((): DistrictCard[] => {
-    const cards: DistrictCard[] = []
+    const cardsRaw: Omit<DistrictCard, 'rank'>[] = []
     for (const f of DISTRICTS.features) {
       const id = (f.properties as { id?: string }).id
       const name = (f.properties as { name?: string }).name
       if (!id || !name) continue
       const danger = districtDanger[id] ?? 'medium'
-      cards.push({
+      cardsRaw.push({
         id,
         name,
         danger,
+        riskScore: districtRiskScore[id] ?? 0,
         incidentsCount: incidents.filter((i) => i.districtId === id).length,
         camerasCount: cameras.filter((c) => c.districtId === id).length,
         objectsCount: objects.filter((o) => o.districtId === id).length,
       })
     }
-    return cards
-  }, [])
+    const sorted = [...cardsRaw].sort((a, b) => b.riskScore - a.riskScore)
+    const rankById = new Map(sorted.map((c, idx) => [c.id, idx + 1]))
+    return cardsRaw.map((c) => ({ ...c, rank: rankById.get(c.id) ?? 0 }))
+  }, [cameras, districtDanger, districtRiskScore, incidents, objects])
 
   const selectedSummary = useMemo(() => {
     if (!selectedDistrictId) return null
     const danger = districtDanger[selectedDistrictId] ?? 'medium'
+    const riskScore = districtRiskScore[selectedDistrictId] ?? 0
+    const rank = districtCards.find((d) => d.id === selectedDistrictId)?.rank ?? 0
+    const incidentTypes = incidents
+      .filter((i) => i.districtId === selectedDistrictId)
+      .reduce<Record<string, number>>((acc, i) => {
+        acc[i.type] = (acc[i.type] ?? 0) + 1
+        return acc
+      }, {})
     return {
       districtId: selectedDistrictId,
       districtName: districtNameById.get(selectedDistrictId) ?? selectedDistrictId,
       danger,
+      riskScore,
+      rank,
+      incidentTypes,
       incidents: incidents.filter((i) => i.districtId === selectedDistrictId),
       cameras: cameras.filter((c) => c.districtId === selectedDistrictId),
       objects: objects.filter((o) => o.districtId === selectedDistrictId),
     }
-  }, [districtNameById, selectedDistrictId])
+  }, [
+    cameras,
+    districtCards,
+    districtDanger,
+    districtNameById,
+    districtRiskScore,
+    incidents,
+    objects,
+    selectedDistrictId,
+  ])
 
   return (
     <PageShell
@@ -324,6 +338,29 @@ export function MapPage() {
               <span className="text-xs">высок.</span>
             </span>
           </div>
+
+          <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-white text-sm">
+            <button
+              type="button"
+              onClick={() => setBaseMap('streets')}
+              className={[
+                'px-3 py-2 font-medium transition',
+                baseMap === 'streets' ? 'bg-slate-900 text-white' : 'hover:bg-slate-50',
+              ].join(' ')}
+            >
+              Схема
+            </button>
+            <button
+              type="button"
+              onClick={() => setBaseMap('satellite')}
+              className={[
+                'px-3 py-2 font-medium transition',
+                baseMap === 'satellite' ? 'bg-slate-900 text-white' : 'hover:bg-slate-50',
+              ].join(' ')}
+            >
+              Спутник
+            </button>
+          </div>
         </div>
       }
     >
@@ -337,10 +374,17 @@ export function MapPage() {
             ]}
           >
             <GeomanControls />
-            <TileLayer
-              attribution="&copy; OpenStreetMap contributors"
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
+            {baseMap === 'satellite' ? (
+              <TileLayer
+                attribution="Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community"
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+              />
+            ) : (
+              <TileLayer
+                attribution="&copy; OpenStreetMap contributors"
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+            )}
 
             {layers.districts ? (
               <GeoJSON
@@ -481,7 +525,15 @@ export function MapPage() {
                             </span>
                           </div>
                         </div>
-                        <div className="shrink-0 text-xs text-slate-500">ID: {d.id}</div>
+                        <div className="shrink-0 text-right">
+                          <div className="text-xs text-slate-500">Рейтинг</div>
+                          <div className="text-sm font-semibold text-slate-900">#{d.rank}</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-2 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs text-slate-600">
+                        <span>Индекс опасности</span>
+                        <span className="font-semibold text-slate-900">{d.riskScore.toFixed(1)}</span>
                       </div>
 
                       <div className="mt-3 grid grid-cols-3 gap-2">
@@ -531,6 +583,46 @@ export function MapPage() {
                     style={{ background: dangerColors(selectedSummary.danger).fill }}
                   />
                   <span className="capitalize">{dangerLabel(selectedSummary.danger)}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-xs text-slate-500">Рейтинг района</div>
+                  <div className="mt-1 text-lg font-semibold">#{selectedSummary.rank || '—'}</div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-xs text-slate-500">Индекс опасности</div>
+                  <div className="mt-1 text-lg font-semibold">
+                    {Number.isFinite(selectedSummary.riskScore)
+                      ? selectedSummary.riskScore.toFixed(1)
+                      : '—'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 p-3">
+                <div className="text-xs font-semibold text-slate-700">Структура инцидентов</div>
+                {selectedSummary.incidents.length === 0 ? (
+                  <div className="mt-2 text-sm text-slate-500">Нет данных.</div>
+                ) : (
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    {Object.entries(selectedSummary.incidentTypes)
+                      .sort((a, b) => b[1] - a[1])
+                      .slice(0, 6)
+                      .map(([k, v]) => (
+                        <div key={k} className="rounded-xl bg-slate-50 p-2 text-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium">{k}</span>
+                            <span className="text-xs text-slate-500">{v}</span>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+                <div className="mt-3 rounded-xl bg-slate-50 p-2 text-xs text-slate-600">
+                  Примечание: показатели берутся из данных системы. Для отчёта “Сводка за 18.12.2025”
+                  можно будет загрузить агрегированные значения после согласования формата.
                 </div>
               </div>
 

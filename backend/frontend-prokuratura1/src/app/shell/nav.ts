@@ -8,6 +8,7 @@ import {
   Map,
   Settings,
   ShieldAlert,
+  User,
 } from 'lucide-react'
 
 export type NavItem = {
@@ -59,6 +60,12 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Настройки',
     description: 'Город, отображение, уведомления',
     icon: Settings,
+  },
+  {
+    to: '/profile',
+    label: 'Профиль',
+    description: 'Данные пользователя и роль',
+    icon: User,
   },
   {
     to: '/help',
