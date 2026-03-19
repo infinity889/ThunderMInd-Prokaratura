@@ -9,6 +9,7 @@ if (typeof window !== 'undefined') {
 import '@geoman-io/leaflet-geoman-free'
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
 import { useEffect, useMemo, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useAdmin } from '../../shared/lib/useAdmin'
 import { CircleMarker, GeoJSON, MapContainer, Popup, TileLayer, useMap } from 'react-leaflet'
 import type { FeatureCollection, Feature } from 'geojson'
@@ -40,11 +41,224 @@ function pointInArea(point: [number, number], coordinates: any[], type: string):
   return false;
 }
 
+function MarkerModal({
+  markerData,
+  districtsFC,
+  onClose,
+  onSave
+}: {
+  markerData: any
+  districtsFC: FeatureCollection
+  onClose: () => void
+  onSave: () => void
+}) {
+  const [step, setStep] = useState<1 | 1.5 | 2>(1)
+  const [type, setType] = useState<'1' | '2' | '3'>('1')
+  const [name, setName] = useState('')
+  const [detectedDistrict, setDetectedDistrict] = useState<number | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    const geojson = markerData.layer.toGeoJSON()
+    const lng = geojson.geometry.coordinates[0]
+    const lat = geojson.geometry.coordinates[1]
+    let detectedId = null
+    for (const d of districtsFC.features) {
+      if (d.geometry && pointInArea([lng, lat], (d.geometry as any).coordinates, d.geometry.type)) {
+        detectedId = parseInt(d.properties?.id as string, 10)
+        break
+      }
+    }
+    setDetectedDistrict(detectedId)
+  }, [markerData, districtsFC])
+
+  const handleNext = () => {
+    if (step === 1) {
+      if (!detectedDistrict) setStep(1.5)
+      else setStep(2)
+    } else if (step === 1.5) {
+      setStep(2)
+    } else if (step === 2) {
+      submit()
+    }
+  }
+
+  const submit = async () => {
+    if (!name.trim()) {
+      alert('Пожалуйста, введите название.')
+      return
+    }
+    setIsSubmitting(true)
+    const geojson = markerData.layer.toGeoJSON()
+    const lng = geojson.geometry.coordinates[0]
+    const lat = geojson.geometry.coordinates[1]
+
+    try {
+      if (type === '1') {
+        await apiFetch('/map-data/crimes/', {
+          method: 'POST',
+          body: JSON.stringify({
+            title: name,
+            crime_type: 'other',
+            district: detectedDistrict,
+            latitude: lat,
+            longitude: lng,
+            date_committed: new Date().toISOString(),
+          }),
+        })
+      } else if (type === '2') {
+        await apiFetch('/map-data/cameras/', {
+          method: 'POST',
+          body: JSON.stringify({
+            name,
+            district: detectedDistrict,
+            latitude: lat,
+            longitude: lng,
+            status: 'online',
+          }),
+        })
+      } else if (type === '3') {
+        await apiFetch('/map-data/social-objects/', {
+          method: 'POST',
+          body: JSON.stringify({
+            name,
+            object_type: 'other',
+            district: detectedDistrict,
+            latitude: lat,
+            longitude: lng,
+          }),
+        })
+      }
+      onSave()
+    } catch (err: any) {
+      console.error(err)
+      const details = err.details ? JSON.stringify(err.details) : err.message
+      alert(`Ошибка при сохранении: ${details}`)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm transition-opacity">
+      <div className="w-full max-w-md bg-white rounded-[24px] shadow-2xl overflow-hidden flex flex-col transform transition-all animate-in zoom-in-95 duration-200">
+        <div className="px-6 py-5 border-b border-slate-100">
+          <h3 className="text-[20px] font-bold tracking-tight text-slate-800">
+            {step === 1 && 'Новый объект'}
+            {step === 1.5 && 'Предупреждение'}
+            {step === 2 && 'Введите данные'}
+          </h3>
+          <p className="mt-1.5 text-sm font-medium text-slate-500">
+            {step === 1 && 'Что вы хотите добавить на карту?'}
+            {step === 1.5 && 'Локация находится за пределами районов.'}
+            {step === 2 && 'Укажите название нового объекта.'}
+          </p>
+        </div>
+
+        <div className="p-6">
+          {step === 1 && (
+            <div className="space-y-3">
+              {[
+                { id: '1', label: 'Инцидент', icon: '🔴', desc: 'Правонарушение или опасное событие' },
+                { id: '2', label: 'Камера видеонаблюдения', icon: '📹', desc: 'Автоматическая система фиксации' },
+                { id: '3', label: 'Социальный объект', icon: '🏥', desc: 'Школа, больница и др.' },
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => setType(opt.id as any)}
+                  className={`w-full flex items-center gap-4 p-4 rounded-[16px] border-[2px] transition-all text-left group ${
+                    type === opt.id
+                      ? 'border-slate-800 bg-slate-50 shadow-sm shadow-slate-200/50'
+                      : 'border-slate-100 hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className={`text-2xl transition-transform ${type === opt.id ? 'scale-110' : 'group-hover:scale-110'}`}>
+                    {opt.icon}
+                  </div>
+                  <div>
+                    <div className={`font-bold transition-colors ${type === opt.id ? 'text-slate-900' : 'text-slate-600'}`}>
+                      {opt.label}
+                    </div>
+                    <div className="text-[13px] text-slate-500 mt-0.5 font-medium">{opt.desc}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {step === 1.5 && (
+            <div className="text-slate-700 leading-relaxed text-[15px] font-medium">
+              <div className="p-4 rounded-[16px] bg-amber-50 text-amber-900 border border-amber-200/50 mb-5 shadow-sm">
+                Выбранная вами точка на карте не входит ни в один из зарегистрированных районов города.
+              </div>
+              <p>Сохранить эту метку без привязки к району?</p>
+            </div>
+          )}
+
+          {step === 2 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 p-4 rounded-[16px] bg-slate-50 border border-slate-100 shadow-sm mb-2">
+                 <div className="text-xl">{type === '1' ? '🔴' : type === '2' ? '📹' : '🏥'}</div>
+                 <div className="text-sm font-bold text-slate-800">
+                   {type === '1' ? 'Инцидент' : type === '2' ? 'Камера' : 'Социальный объект'}
+                 </div>
+              </div>
+              <label className="block">
+                <span className="block text-[14px] font-bold text-slate-700 mb-2">Название объекта</span>
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder={
+                    type === '1' ? 'Напр: Кража в магазине' :
+                    type === '2' ? 'Напр: Перекресток Абая' :
+                    'Напр: Детский сад №5'
+                  }
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleNext()}
+                  className="w-full px-4 py-3.5 text-[15px] font-medium rounded-[14px] border border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all placeholder:text-slate-400"
+                />
+              </label>
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-5 bg-slate-50 border-t border-slate-200/60 flex items-center justify-between gap-3">
+          <button
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="px-5 py-2.5 rounded-[12px] font-bold text-[14px] text-slate-600 hover:bg-slate-200/70 hover:text-slate-900 transition-colors"
+          >
+            Отмена
+          </button>
+          
+          <button
+            onClick={handleNext}
+            disabled={isSubmitting}
+            className="px-6 py-2.5 rounded-[12px] font-bold text-[14px] text-white bg-slate-900 hover:bg-slate-800 shadow-lg shadow-slate-900/20 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+          >
+            {isSubmitting ? (
+              <>
+                <div className="size-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>
+                Сохранение...
+              </>
+            ) : (
+               step === 1 ? 'Далее' : step === 1.5 ? 'Все равно сохранить' : 'Добавить объект'
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function GeomanControls({ reloadData, districtsFC }: { reloadData: () => void, districtsFC: FeatureCollection }) {
-  const map = useMap();
+  const map = useMap()
+  const [pendingMarker, setPendingMarker] = useState<any>(null)
+
   useEffect(() => {
     try {
-      const isAdmin = localStorage.getItem('is_admin') === 'true';
+      const isAdmin = localStorage.getItem('is_admin') === 'true'
       if (map.pm && isAdmin) {
         map.pm.addControls({
           position: 'topleft',
@@ -60,90 +274,16 @@ function GeomanControls({ reloadData, districtsFC }: { reloadData: () => void, d
           cutPolygon: false,
           removalMode: true,
           rotateMode: true,
-        });
+        })
         
         const handleCreate = async (e: any) => {
-          const geojson = e.layer.toGeoJSON();
-          
           if (e.shape === 'Marker') {
-             const typeStr = prompt('Что добавляем?\n1 - Инцидент\n2 - Камера\n3 - Социальный объект');
-             if (!typeStr) {
-                map.removeLayer(e.layer);
-                return;
-             }
-             const lng = geojson.geometry.coordinates[0];
-             const lat = geojson.geometry.coordinates[1];
-             
-             let detectedDistrictId: number | null = null;
-             for (const d of districtsFC.features) {
-                if (d.geometry && pointInArea([lng, lat], (d.geometry as any).coordinates as any, d.geometry.type)) {
-                   detectedDistrictId = parseInt(d.properties?.id as string, 10);
-                   break;
-                }
-             }
-
-             if (!detectedDistrictId) {
-                const proceed = confirm('Точка находится вне зарегистрированных районов. Сохранить без привязки к району?');
-                if (!proceed) {
-                   map.removeLayer(e.layer);
-                   return;
-                }
-             }
-             
-             const districtPK = detectedDistrictId;
-             
-             try {
-                 if (typeStr === '1') {
-                    const title = prompt('Название инцидента (например: Кража велосипеда):') || 'Без названия';
-                    await apiFetch('/map-data/crimes/', {
-                      method: 'POST',
-                      body: JSON.stringify({
-                        title,
-                        crime_type: 'other',
-                        district: districtPK,
-                        latitude: lat,
-                        longitude: lng,
-                        date_committed: new Date().toISOString()
-                      })
-                    });
-                 } else if (typeStr === '2') {
-                    const name = prompt('Название камеры (например: Перекресток Абая):') || 'Новая камера';
-                    await apiFetch('/map-data/cameras/', {
-                      method: 'POST',
-                      body: JSON.stringify({
-                        name,
-                        district: districtPK,
-                        latitude: lat,
-                        longitude: lng,
-                        status: 'online'
-                      })
-                    });
-                 } else if (typeStr === '3') {
-                    const name = prompt('Название соц. объекта (например: Школа №1):') || 'Новый объект';
-                    await apiFetch('/map-data/social-objects/', {
-                      method: 'POST',
-                      body: JSON.stringify({
-                        name,
-                        object_type: 'other',
-                        district: districtPK,
-                        latitude: lat,
-                        longitude: lng
-                      })
-                    });
-                 } else {
-                    alert('Неверный выбор.');
-                 }
-             } catch (err: any) {
-                 console.error(err);
-                 const details = err.details ? JSON.stringify(err.details) : err.message;
-                 alert(`Ошибка при сохранении объекта. Детали: ${details}`);
-             }
-             map.removeLayer(e.layer);
-             reloadData();
-             return;
+             setPendingMarker(e)
+             return
           }
           
-          // If shape is Polygon/Rectangle (District)
+          // Polygon/Rectangle (District)
+          const geojson = e.layer.toGeoJSON()
           try {
             await apiFetch('/map-data/districts/', {
               method: 'POST',
@@ -152,39 +292,38 @@ function GeomanControls({ reloadData, districtsFC }: { reloadData: () => void, d
                 risk_score: 5.0,
                 coordinates: geojson.geometry
               })
-            });
-            map.removeLayer(e.layer);
-            reloadData();
+            })
+            map.removeLayer(e.layer)
+            reloadData()
           } catch (error) {
-            console.error(error);
-            alert('Ошибка при сохранении района');
+            console.error(error)
+            alert('Ошибка при сохранении района')
           }
-        };
+        }
 
         const handleRemove = async (e: any) => {
           if (e.layer.feature && e.layer.feature.properties && e.layer.feature.properties.id) {
-            const id = e.layer.feature.properties.id;
+            const id = e.layer.feature.properties.id
             try {
               await apiFetch(`/map-data/districts/${id}/`, {
                 method: 'DELETE'
-              });
-              reloadData();
+              })
+              reloadData()
             } catch (error) {
-              console.error(error);
-              alert('Ошибка при удалении района');
+              console.error(error)
+              alert('Ошибка при удалении района')
             }
           }
-        };
+        }
 
-        map.on('pm:create', handleCreate);
-        map.on('pm:remove', handleRemove);
+        map.on('pm:create', handleCreate)
+        map.on('pm:remove', handleRemove)
         
         return () => {
-          map.off('pm:create', handleCreate);
-          map.off('pm:remove', handleRemove);
-        };
+          map.off('pm:create', handleCreate)
+          map.off('pm:remove', handleRemove)
+        }
       } else if (map.pm && !isAdmin) {
-         // ensure controls are removed if previously added but admin status changed
          map.pm.addControls({
            position: 'topleft',
            drawCircle: false,
@@ -199,13 +338,29 @@ function GeomanControls({ reloadData, districtsFC }: { reloadData: () => void, d
            cutPolygon: false,
            removalMode: false,
            rotateMode: false,
-         });
+         })
       }
     } catch (err) {
-      console.error('Geoman setup error', err);
+      console.error('Geoman setup error', err)
     }
-  }, [map, reloadData, districtsFC]);
-  return null;
+  }, [map, reloadData, districtsFC])
+
+  return pendingMarker ? createPortal(
+    <MarkerModal
+      markerData={pendingMarker}
+      districtsFC={districtsFC}
+      onClose={() => {
+        map.removeLayer(pendingMarker.layer)
+        setPendingMarker(null)
+      }}
+      onSave={() => {
+        map.removeLayer(pendingMarker.layer)
+        setPendingMarker(null)
+        reloadData()
+      }}
+    />,
+    document.body
+  ) : null
 }
 
 type LayerKey = 'districts' | 'incidents' | 'cameras' | 'objects'
