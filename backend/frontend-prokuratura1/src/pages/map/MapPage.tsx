@@ -9,6 +9,7 @@ import '@geoman-io/leaflet-geoman-free'
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
 import { useEffect, useMemo, useState } from 'react'
 import { CircleMarker, GeoJSON, MapContainer, Popup, TileLayer, useMap } from 'react-leaflet'
+import { useSearchParams } from 'react-router-dom'
 import type { FeatureCollection } from 'geojson'
 import { PageShell } from '../_ui/PageShell'
 import { apiFetch } from '../../shared/api/apiClient'
@@ -160,15 +161,8 @@ export function MapPage() {
   const [cameras, setCameras] = useState<Camera[]>(INITIAL_CAMERAS)
   const [objects, setObjects] = useState<SocialObject[]>(INITIAL_OBJECTS)
   const [districtDanger, setDistrictDanger] = useState<Record<string, DangerLevel>>({})
-  const [districtRiskScore, setDistrictRiskScore] = useState<Record<string, number>>(() => {
-    const out: Record<string, number> = {}
-    for (const f of DISTRICTS.features) {
-      const id = (f.properties as { id?: string } | undefined)?.id
-      if (!id) continue
-      out[id] = ((String(id).length * 1.7) % 9) + 1
-    }
-    return out
-  })
+  const [districtRiskScore, setDistrictRiskScore] = useState<Record<string, number>>({})
+  const [searchParams] = useSearchParams()
 
   useEffect(() => {
     const fetchMapData = async () => {
@@ -259,11 +253,12 @@ export function MapPage() {
       const name = (f.properties as { name?: string }).name
       if (!id || !name) continue
       const danger = districtDanger[id] ?? 'medium'
+      const fallbackScore = ((String(id).length * 1.7) % 9) + 1
       cardsRaw.push({
         id,
         name,
         danger,
-        riskScore: districtRiskScore[id] ?? 0,
+        riskScore: districtRiskScore[id] ?? fallbackScore,
         incidentsCount: incidents.filter((i) => i.districtId === id).length,
         camerasCount: cameras.filter((c) => c.districtId === id).length,
         objectsCount: objects.filter((o) => o.districtId === id).length,
@@ -306,6 +301,18 @@ export function MapPage() {
     objects,
     selectedDistrictId,
   ])
+
+  // React to search query in ?search=
+  useEffect(() => {
+    const q = (searchParams.get('search') ?? '').trim().toLowerCase()
+    if (!q) return
+    const best = districtCards.find((d) => d.name.toLowerCase().includes(q))
+    if (!best) return
+    if (best.id !== selectedDistrictId) {
+      // Select район по поиску (без авто-зума).
+      setTimeout(() => setSelectedDistrictId(best.id), 0)
+    }
+  }, [districtCards, searchParams, selectedDistrictId])
 
   return (
     <PageShell
@@ -372,10 +379,8 @@ export function MapPage() {
         <div className="overflow-hidden rounded-2xl border border-slate-200">
           <MapContainer
             className="h-full min-h-[520px] w-full"
-            bounds={[
-              [46.95, 51.82],
-              [47.25, 52.08],
-            ]}
+            center={[47.0943, 51.9165]}
+            zoom={13}
           >
             <GeomanControls />
             {baseMap === 'satellite' ? (
@@ -498,76 +503,14 @@ export function MapPage() {
         <aside className="rounded-2xl border border-slate-200 bg-white p-4">
           {!selectedSummary ? (
             <div className="text-sm text-slate-600">
-              <div className="font-semibold text-slate-900">Районы Атырау</div>
-              <div className="mt-2 text-sm text-slate-600">
-                Нажмите на карточку района или кликните по району на карте.
+              <div className="font-semibold text-slate-900">Сводка по району</div>
+              <div className="mt-2">
+                Кликните по району на карте или найдите его через поиск сверху, чтобы увидеть
+                подробную информацию.
               </div>
-
-              <div className="mt-3 grid gap-2">
-                {districtCards.map((d) => {
-                  const colors = dangerColors(d.danger)
-                  return (
-                    <button
-                      key={d.id}
-                      type="button"
-                      onClick={() => setSelectedDistrictId(d.id)}
-                      className="group w-full rounded-2xl border border-slate-200 bg-white p-3 text-left hover:bg-slate-50"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold text-slate-900">
-                            {d.name}
-                          </div>
-                          <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                            <span
-                              className="inline-block size-3 rounded-sm"
-                              style={{ background: colors.fill }}
-                              aria-hidden
-                            />
-                            <span className="capitalize">
-                              опасность: {dangerLabel(d.danger)}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="shrink-0 text-right">
-                          <div className="text-xs text-slate-500">Рейтинг</div>
-                          <div className="text-sm font-semibold text-slate-900">#{d.rank}</div>
-                        </div>
-                      </div>
-
-                      <div className="mt-2 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs text-slate-600">
-                        <span>Индекс опасности</span>
-                        <span className="font-semibold text-slate-900">{d.riskScore.toFixed(1)}</span>
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-3 gap-2">
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
-                          <div className="text-[11px] text-slate-500">Инциденты</div>
-                          <div className="mt-0.5 text-base font-semibold text-slate-900">
-                            {d.incidentsCount}
-                          </div>
-                        </div>
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
-                          <div className="text-[11px] text-slate-500">Камеры</div>
-                          <div className="mt-0.5 text-base font-semibold text-slate-900">
-                            {d.camerasCount}
-                          </div>
-                        </div>
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
-                          <div className="text-[11px] text-slate-500">Объекты</div>
-                          <div className="mt-0.5 text-base font-semibold text-slate-900">
-                            {d.objectsCount}
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-
               <div className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-                Сейчас уровни опасности заданы вручную (зел/жёлт/красн). Позже их
-                будет рассчитывать AI‑анализ.
+                После выбора района здесь появятся его рейтинг, индекс опасности и структура
+                инцидентов.
               </div>
             </div>
           ) : (
