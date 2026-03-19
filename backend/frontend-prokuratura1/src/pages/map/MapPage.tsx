@@ -8,14 +8,38 @@ if (typeof window !== 'undefined') {
 
 import '@geoman-io/leaflet-geoman-free'
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useAdmin } from '../../shared/lib/useAdmin'
 import { CircleMarker, GeoJSON, MapContainer, Popup, TileLayer, useMap } from 'react-leaflet'
-import type { FeatureCollection } from 'geojson'
+import type { FeatureCollection, Feature } from 'geojson'
 import { PageShell } from '../_ui/PageShell'
 import { apiFetch } from '../../shared/api/apiClient'
 
-function GeomanControls() {
+function pointInPolygon(point: [number, number], polygon: number[][][]) {
+  const [x, y] = point;
+  let inside = false;
+  const ring = polygon[0];
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    const intersect = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function pointInArea(point: [number, number], coordinates: any[], type: string): boolean {
+  if (type === 'Polygon') {
+    return pointInPolygon(point, coordinates as number[][][]);
+  } else if (type === 'MultiPolygon') {
+    for (const poly of coordinates) {
+      if (pointInPolygon(point, poly as number[][][])) return true;
+    }
+  }
+  return false;
+}
+
+function GeomanControls({ reloadData, districtsFC }: { reloadData: () => void, districtsFC: FeatureCollection }) {
   const map = useMap();
   useEffect(() => {
     try {
@@ -24,7 +48,7 @@ function GeomanControls() {
         map.pm.addControls({
           position: 'topleft',
           drawCircle: false,
-          drawMarker: false,
+          drawMarker: true,
           drawCircleMarker: false,
           drawPolyline: false,
           drawRectangle: true,
@@ -37,10 +61,127 @@ function GeomanControls() {
           rotateMode: true,
         });
         
-        map.on('pm:create', (e: any) => {
-          console.log('Shape created', e.layer);
-          alert('Новый район добавлен локально! (Для сохранения необходима интеграция с бекендом)');
-        });
+        const handleCreate = async (e: any) => {
+          const geojson = e.layer.toGeoJSON();
+          
+          if (e.shape === 'Marker') {
+             const typeStr = prompt('Что добавляем?\n1 - Инцидент\n2 - Камера\n3 - Социальный объект');
+             if (!typeStr) {
+                map.removeLayer(e.layer);
+                return;
+             }
+             const lng = geojson.geometry.coordinates[0];
+             const lat = geojson.geometry.coordinates[1];
+             
+             let detectedDistrictId: number | null = null;
+             for (const d of districtsFC.features) {
+                if (d.geometry && pointInArea([lng, lat], (d.geometry as any).coordinates as any, d.geometry.type)) {
+                   detectedDistrictId = parseInt(d.properties?.id as string, 10);
+                   break;
+                }
+             }
+
+             if (!detectedDistrictId) {
+                const proceed = confirm('Точка находится вне зарегистрированных районов. Сохранить без привязки к району?');
+                if (!proceed) {
+                   map.removeLayer(e.layer);
+                   return;
+                }
+             }
+             
+             const districtPK = detectedDistrictId;
+             
+             try {
+                 if (typeStr === '1') {
+                    const title = prompt('Название инцидента (например: Кража велосипеда):') || 'Без названия';
+                    await apiFetch('/map-data/crimes/', {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        title,
+                        crime_type: 'other',
+                        district: districtPK,
+                        latitude: lat,
+                        longitude: lng,
+                        date_committed: new Date().toISOString()
+                      })
+                    });
+                 } else if (typeStr === '2') {
+                    const name = prompt('Название камеры (например: Перекресток Абая):') || 'Новая камера';
+                    await apiFetch('/map-data/cameras/', {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        name,
+                        district: districtPK,
+                        latitude: lat,
+                        longitude: lng,
+                        status: 'online'
+                      })
+                    });
+                 } else if (typeStr === '3') {
+                    const name = prompt('Название соц. объекта (например: Школа №1):') || 'Новый объект';
+                    await apiFetch('/map-data/social-objects/', {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        name,
+                        object_type: 'other',
+                        district: districtPK,
+                        latitude: lat,
+                        longitude: lng
+                      })
+                    });
+                 } else {
+                    alert('Неверный выбор.');
+                 }
+             } catch (err: any) {
+                 console.error(err);
+                 const details = err.details ? JSON.stringify(err.details) : err.message;
+                 alert(`Ошибка при сохранении объекта. Детали: ${details}`);
+             }
+             map.removeLayer(e.layer);
+             reloadData();
+             return;
+          }
+          
+          // If shape is Polygon/Rectangle (District)
+          try {
+            await apiFetch('/map-data/districts/', {
+              method: 'POST',
+              body: JSON.stringify({
+                name: 'Новый район ' + Date.now().toString().slice(-4),
+                risk_score: 5.0,
+                coordinates: geojson.geometry
+              })
+            });
+            map.removeLayer(e.layer);
+            reloadData();
+          } catch (error) {
+            console.error(error);
+            alert('Ошибка при сохранении района');
+          }
+        };
+
+        const handleRemove = async (e: any) => {
+          if (e.layer.feature && e.layer.feature.properties && e.layer.feature.properties.id) {
+            const id = e.layer.feature.properties.id;
+            try {
+              await apiFetch(`/map-data/districts/${id}/`, {
+                method: 'DELETE'
+              });
+              reloadData();
+            } catch (error) {
+              console.error(error);
+              alert('Ошибка при удалении района');
+            }
+          }
+        };
+
+        map.on('pm:create', handleCreate);
+        map.on('pm:remove', handleRemove);
+        
+        return () => {
+          map.off('pm:create', handleCreate);
+          map.off('pm:remove', handleRemove);
+        };
       } else if (map.pm && !isAdmin) {
          // ensure controls are removed if previously added but admin status changed
          map.pm.addControls({
@@ -62,7 +203,7 @@ function GeomanControls() {
     } catch (err) {
       console.error('Geoman setup error', err);
     }
-  }, [map]);
+  }, [map, reloadData, districtsFC]);
   return null;
 }
 
@@ -98,59 +239,7 @@ type SocialObject = {
   districtId: string
 }
 
-const DISTRICTS: FeatureCollection = {
-  type: 'FeatureCollection',
-  features: [
-    {
-      type: 'Feature',
-      properties: { id: 'd1', name: 'Атырау — Север' },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [
-          [
-            [51.85, 47.14],
-            [52.03, 47.14],
-            [52.03, 47.22],
-            [51.85, 47.22],
-            [51.85, 47.14],
-          ],
-        ],
-      },
-    },
-    {
-      type: 'Feature',
-      properties: { id: 'd2', name: 'Атырау — Центр' },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [
-          [
-            [51.85, 47.06],
-            [52.03, 47.06],
-            [52.03, 47.14],
-            [51.85, 47.14],
-            [51.85, 47.06],
-          ],
-        ],
-      },
-    },
-    {
-      type: 'Feature',
-      properties: { id: 'd3', name: 'Атырау — Юг' },
-      geometry: {
-        type: 'Polygon',
-        coordinates: [
-          [
-            [51.85, 46.98],
-            [52.03, 46.98],
-            [52.03, 47.06],
-            [51.85, 47.06],
-            [51.85, 46.98],
-          ],
-        ],
-      },
-    },
-  ],
-}
+
 
 const INITIAL_INCIDENTS: Incident[] = []
 const INITIAL_CAMERAS: Camera[] = []
@@ -210,105 +299,197 @@ export function MapPage() {
   })
   const [selectedDistrictId, setSelectedDistrictId] = useState<string | null>(null)
   
+  const [districtsFC, setDistrictsFC] = useState<FeatureCollection>({ type: 'FeatureCollection', features: [] })
   const [incidents, setIncidents] = useState<Incident[]>(INITIAL_INCIDENTS)
   const [cameras, setCameras] = useState<Camera[]>(INITIAL_CAMERAS)
   const [objects, setObjects] = useState<SocialObject[]>(INITIAL_OBJECTS)
   const [districtDanger, setDistrictDanger] = useState<Record<string, DangerLevel>>({})
 
-  useEffect(() => {
-    const fetchMapData = async () => {
-      try {
-        const [crimesData, camerasData, objectsData, districtsData] = await Promise.all([
-          apiFetch<any[]>('/map-data/crimes/'),
-          apiFetch<any[]>('/map-data/cameras/'),
-          apiFetch<any[]>('/map-data/social-objects/'),
-          apiFetch<any[]>('/map-data/districts/')
-        ]);
+  const fetchMapData = useCallback(async () => {
+    try {
+      const [crimesData, camerasData, objectsData, districtsData] = await Promise.all([
+        apiFetch<any[]>('/map-data/crimes/'),
+        apiFetch<any[]>('/map-data/cameras/'),
+        apiFetch<any[]>('/map-data/social-objects/'),
+        apiFetch<any[]>('/map-data/districts/')
+      ]);
 
-        setIncidents(crimesData.map(c => ({
-          id: String(c.id),
-          title: c.title,
-          type: c.crime_type,
-          lat: c.latitude,
-          lng: c.longitude,
-          districtId: String(c.district),
-          occurredAt: new Date(c.date_committed).toLocaleString()
-        })));
+      setIncidents(crimesData.map(c => ({
+        id: String(c.id),
+        title: c.title,
+        type: c.crime_type,
+        lat: c.latitude,
+        lng: c.longitude,
+        districtId: String(c.district),
+        occurredAt: new Date(c.date_committed).toLocaleString()
+      })));
 
-        setCameras(camerasData.map(c => ({
-          id: String(c.id),
-          name: c.name,
-          lat: c.latitude,
-          lng: c.longitude,
-          districtId: String(c.district),
-          status: 'online'
-        })));
+      setCameras(camerasData.map(c => ({
+        id: String(c.id),
+        name: c.name,
+        lat: c.latitude,
+        lng: c.longitude,
+        districtId: String(c.district),
+        status: 'online'
+      })));
 
-        setObjects(objectsData.map(o => ({
-          id: String(o.id),
-          name: o.name,
-          kind: o.object_type,
-          lat: o.latitude,
-          lng: o.longitude,
-          districtId: String(o.district)
-        })));
+      setObjects(objectsData.map(o => ({
+        id: String(o.id),
+        name: o.name,
+        kind: o.object_type,
+        lat: o.latitude,
+        lng: o.longitude,
+        districtId: String(o.district)
+      })));
 
-        const dDanger: Record<string, DangerLevel> = {};
-        districtsData.forEach(d => {
-           let level: DangerLevel = 'low';
-           if (d.risk_score > 3 && d.risk_score < 7) level = 'medium';
-           if (d.risk_score >= 7) level = 'high';
-           dDanger[String(d.id)] = level;
-        });
-        setDistrictDanger(dDanger);
-      } catch (e) {
-        console.error(e);
-      }
-    };
-    fetchMapData();
+      const features: Feature[] = [];
+      const dDanger: Record<string, DangerLevel> = {};
+      districtsData.forEach(d => {
+         let level: DangerLevel = 'low';
+         if (d.risk_score > 3 && d.risk_score < 7) level = 'medium';
+         if (d.risk_score >= 7) level = 'high';
+         dDanger[String(d.id)] = level;
+         
+         if (d.coordinates) {
+           features.push({
+             type: 'Feature',
+             properties: { id: String(d.id), name: d.name },
+             geometry: d.coordinates
+           });
+         }
+      });
+      setDistrictDanger(dDanger);
+      setDistrictsFC({ type: 'FeatureCollection', features });
+    } catch (e) {
+      console.error(e);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchMapData();
+  }, [fetchMapData]);
 
   const districtNameById = useMemo(() => {
     const map = new Map<string, string>()
-    for (const f of DISTRICTS.features) {
+    for (const f of districtsFC.features) {
       const id = (f.properties as { id?: string }).id
       const name = (f.properties as { name?: string }).name
       if (id && name) map.set(id, name)
     }
     return map
-  }, [])
+  }, [districtsFC])
 
   const districtCards = useMemo((): DistrictCard[] => {
     const cards: DistrictCard[] = []
-    for (const f of DISTRICTS.features) {
+    for (const f of districtsFC.features) {
       const id = (f.properties as { id?: string }).id
       const name = (f.properties as { name?: string }).name
       if (!id || !name) continue
       const danger = districtDanger[id] ?? 'medium'
+      
+      const geom = f.geometry;
+      let incCount = 0, camCount = 0, objCount = 0;
+      
+      if (geom) {
+        incCount = incidents.filter(i => pointInArea([i.lng, i.lat], (geom as any).coordinates as any, geom.type)).length;
+        camCount = cameras.filter(c => pointInArea([c.lng, c.lat], (geom as any).coordinates as any, geom.type)).length;
+        objCount = objects.filter(o => pointInArea([o.lng, o.lat], (geom as any).coordinates as any, geom.type)).length;
+      }
+      
       cards.push({
         id,
         name,
         danger,
-        incidentsCount: incidents.filter((i) => i.districtId === id).length,
-        camerasCount: cameras.filter((c) => c.districtId === id).length,
-        objectsCount: objects.filter((o) => o.districtId === id).length,
+        incidentsCount: incCount,
+        camerasCount: camCount,
+        objectsCount: objCount,
       })
     }
     return cards
-  }, [])
+  }, [districtsFC, districtDanger, incidents, cameras, objects])
+
+  const updateDistrictDanger = async (id: string, risk_score: number) => {
+    try {
+      await apiFetch(`/map-data/districts/${id}/`, {
+        method: 'PATCH',
+        body: JSON.stringify({ risk_score }),
+      });
+      fetchMapData();
+    } catch (e) {
+      alert('Ошибка при обновлении уровня опасности');
+    }
+  };
+
+  const renameDistrict = async (id: string, currentName: string) => {
+    const newName = prompt('Введите новое название района:', currentName);
+    if (!newName || newName === currentName) return;
+    try {
+      await apiFetch(`/map-data/districts/${id}/`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: newName }),
+      });
+      fetchMapData();
+    } catch (e) {
+      alert('Ошибка при переименовании района');
+    }
+  };
+
+  const deleteMarker = async (type: string, id: string) => {
+    if (!confirm('Удалить этот объект?')) return;
+    try {
+      await apiFetch(`/map-data/${type}/${id}/`, { method: 'DELETE' });
+      fetchMapData();
+    } catch (e) {
+      alert('Ошибка при удалении');
+    }
+  };
+
+  const renameMarker = async (type: string, id: string, currentName: string, nameField: string = 'name') => {
+    const newName = prompt('Введите новое название:', currentName);
+    if (!newName || newName === currentName) return;
+    try {
+      await apiFetch(`/map-data/${type}/${id}/`, {
+        method: 'PATCH',
+        body: JSON.stringify({ [nameField]: newName }),
+      });
+      fetchMapData();
+    } catch (e) {
+      alert('Ошибка при переименовании');
+    }
+  };
 
   const selectedSummary = useMemo(() => {
     if (!selectedDistrictId) return null
     const danger = districtDanger[selectedDistrictId] ?? 'medium'
+    const name = districtNameById.get(selectedDistrictId) ?? selectedDistrictId
+    
+    // Find district geometry to filter objects geographically
+    const districtFeature = districtsFC.features.find((f: any) => String(f.properties?.id) === selectedDistrictId);
+    let districtIncidents = incidents;
+    let districtCameras = cameras;
+    let districtObjects = objects;
+
+    if (districtFeature && districtFeature.geometry) {
+       const geom = districtFeature.geometry;
+       districtIncidents = incidents.filter(i => pointInArea([i.lng, i.lat], (geom as any).coordinates as any, geom.type));
+       districtCameras = cameras.filter(c => pointInArea([c.lng, c.lat], (geom as any).coordinates as any, geom.type));
+       districtObjects = objects.filter(o => pointInArea([o.lng, o.lat], (geom as any).coordinates as any, geom.type));
+    } else {
+       // fallback if geometry missing
+       districtIncidents = incidents.filter((i) => i.districtId === selectedDistrictId);
+       districtCameras = cameras.filter((c) => c.districtId === selectedDistrictId);
+       districtObjects = objects.filter((o) => o.districtId === selectedDistrictId);
+    }
+
     return {
       districtId: selectedDistrictId,
-      districtName: districtNameById.get(selectedDistrictId) ?? selectedDistrictId,
+      districtName: name,
       danger,
-      incidents: incidents.filter((i) => i.districtId === selectedDistrictId),
-      cameras: cameras.filter((c) => c.districtId === selectedDistrictId),
-      objects: objects.filter((o) => o.districtId === selectedDistrictId),
+      incidents: districtIncidents,
+      cameras: districtCameras,
+      objects: districtObjects,
     }
-  }, [districtNameById, selectedDistrictId])
+  }, [districtNameById, selectedDistrictId, districtDanger, incidents, cameras, objects, districtsFC])
 
   return (
     <PageShell
@@ -357,15 +538,16 @@ export function MapPage() {
               [47.25, 52.08],
             ]}
           >
-            <GeomanControls />
+            <GeomanControls reloadData={fetchMapData} districtsFC={districtsFC} />
             <TileLayer
               attribution="&copy; OpenStreetMap contributors"
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
 
-            {layers.districts ? (
+            {layers.districts && districtsFC.features.length > 0 ? (
               <GeoJSON
-                data={DISTRICTS as never}
+                key={JSON.stringify(districtsFC)} // Force remount to apply color changes accurately on leaflet layers
+                data={districtsFC as never}
                 style={(feature: { properties?: unknown } | null | undefined) => {
                   const id = (feature?.properties as { id?: string } | undefined)?.id
                   const selected = id && id === selectedDistrictId
@@ -411,8 +593,8 @@ export function MapPage() {
                         </div>
                         {isAdmin && (
                           <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2">
-                            <button className="rounded-lg bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-100" onClick={() => alert('Инструмент админа: Редактировать инцидент')}>Изменить</button>
-                            <button className="rounded-lg bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100" onClick={() => alert('Инструмент админа: Удалить инцидент')}>Удалить</button>
+                            <button className="rounded-lg bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-100" onClick={() => renameMarker('crimes', i.id, i.title, 'title')}>Изменить</button>
+                            <button className="rounded-lg bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100" onClick={() => deleteMarker('crimes', i.id)}>Удалить</button>
                           </div>
                         )}
                       </div>
@@ -447,8 +629,8 @@ export function MapPage() {
                         </div>
                         {isAdmin && (
                           <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2">
-                            <button className="rounded-lg bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-100" onClick={() => alert('Инструмент админа: Настройки камеры')}>Настроить</button>
-                            <button className="rounded-lg bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100" onClick={() => alert('Инструмент админа: Удалить камеру')}>Удалить</button>
+                            <button className="rounded-lg bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-100" onClick={() => renameMarker('cameras', c.id, c.name, 'name')}>Изменить</button>
+                            <button className="rounded-lg bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100" onClick={() => deleteMarker('cameras', c.id)}>Удалить</button>
                           </div>
                         )}
                       </div>
@@ -474,8 +656,8 @@ export function MapPage() {
                         </div>
                         {isAdmin && (
                           <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2">
-                            <button className="rounded-lg bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-100" onClick={() => alert('Инструмент админа: Редактировать объект')}>Изменить</button>
-                            <button className="rounded-lg bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100" onClick={() => alert('Инструмент админа: Удалить объект')}>Удалить</button>
+                            <button className="rounded-lg bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-600 hover:bg-indigo-100" onClick={() => renameMarker('social-objects', o.id, o.name, 'name')}>Изменить</button>
+                            <button className="rounded-lg bg-red-50 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-100" onClick={() => deleteMarker('social-objects', o.id)}>Удалить</button>
                           </div>
                         )}
                       </div>
@@ -555,11 +737,16 @@ export function MapPage() {
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              <div>
-                <div className="text-sm font-semibold">{selectedSummary.districtName}</div>
-                <div className="mt-1 text-xs text-slate-500">
-                  Район ID: {selectedSummary.districtId}
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="text-sm font-semibold">{selectedSummary.districtName}</div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    Район ID: {selectedSummary.districtId}
+                  </div>
                 </div>
+                {isAdmin && (
+                  <button onClick={() => renameDistrict(selectedSummary.districtId, selectedSummary.districtName)} className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2 py-1 rounded-lg">Изменить название</button>
+                )}
               </div>
 
               <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -572,6 +759,15 @@ export function MapPage() {
                   <span className="capitalize">{dangerLabel(selectedSummary.danger)}</span>
                 </div>
               </div>
+
+              {isAdmin && (
+                <div className="flex flex-wrap gap-2 mt-1 mb-2">
+                   <span className="text-xs w-full text-slate-500">Задать опасность (Админ):</span>
+                   <button onClick={() => updateDistrictDanger(selectedSummary.districtId, 1.0)} className="text-[11px] font-semibold border px-2 py-1 rounded-lg bg-green-50 text-green-700 border-green-200 hover:bg-green-100">Низкий (Зел)</button>
+                   <button onClick={() => updateDistrictDanger(selectedSummary.districtId, 5.0)} className="text-[11px] font-semibold border px-2 py-1 rounded-lg bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100">Средний (Жел)</button>
+                   <button onClick={() => updateDistrictDanger(selectedSummary.districtId, 9.0)} className="text-[11px] font-semibold border px-2 py-1 rounded-lg bg-red-50 text-red-700 border-red-200 hover:bg-red-100">Высокий (Красн)</button>
+                </div>
+              )}
 
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
