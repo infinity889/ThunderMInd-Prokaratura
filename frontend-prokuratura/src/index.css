@@ -1,1 +1,8 @@
 @import "tailwindcss";
+
+/* react-leaflet uses Leaflet panes with fixed heights; ensure body stretches */
+html,
+body,
+#root {
+  height: 100%;
+}

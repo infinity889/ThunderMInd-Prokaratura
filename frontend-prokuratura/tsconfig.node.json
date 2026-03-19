@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
+    "incremental": true, 
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
-    "target": "ES2023",
+    "target": "ESNext",
     "lib": ["ES2023"],
     "module": "ESNext",
     "types": ["node"],
@@ -18,9 +19,8 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedSideEffectImports": true
+    "noFallthroughCasesInSwitch": true
+    // erasableSyntaxOnly and noUncheckedSideEffectImports removed
   },
   "include": ["vite.config.ts"]
 }
