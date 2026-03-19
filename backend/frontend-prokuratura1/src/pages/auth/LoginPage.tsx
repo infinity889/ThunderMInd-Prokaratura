@@ -54,25 +54,25 @@ export function LoginPage() {
 
       <form onSubmit={onSubmit} className="mt-6 space-y-4">
         <label className="block">
-          <div className="text-sm font-medium text-slate-700">{t('username')}</div>
+          <div className="text-sm font-semibold text-slate-900">{t('username')}</div>
           <input
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             onBlur={() => setTouched(true)}
-            className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="mt-1 w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm font-medium transition-all focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10"
             placeholder={t('username')}
             autoComplete="username"
           />
         </label>
 
         <label className="block">
-          <div className="text-sm font-medium text-slate-700">{t('password')}</div>
+          <div className="text-sm font-semibold text-slate-900">{t('password')}</div>
           <input
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             onBlur={() => setTouched(true)}
             type="password"
-            className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            className="mt-1 w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-sm font-medium transition-all focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10"
             placeholder="••••••••"
             autoComplete="current-password"
           />
@@ -97,14 +97,14 @@ export function LoginPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-60 transition-colors"
+          className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-sm transition-all hover:bg-blue-700 disabled:opacity-60"
         >
           {loading ? t('loading') : t('btn_login')}
         </button>
 
-        <div className="text-sm text-slate-600 text-center mt-4 pt-4 border-t border-slate-100">
+        <div className="mt-4 border-t border-slate-100 pt-4 text-center text-sm font-medium text-slate-500">
           {t('no_account')}{' '}
-          <Link to="/register" className="font-semibold text-indigo-600 hover:text-indigo-800">
+          <Link to="/register" className="font-bold text-blue-600 transition-colors hover:text-blue-800">
             {t('btn_register')}
           </Link>
         </div>

@@ -319,44 +319,56 @@ export function MapPage() {
       title="Карта"
       subtitle="Слои: районы, инциденты, видеокамеры и социальные объекты. Кликните по району — справа появится сводка."
       right={
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {(['districts', 'incidents', 'cameras', 'objects'] as const).map((k) => (
-            <label
-              key={k}
-              className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50"
-            >
-              <input
-                type="checkbox"
-                checked={layers[k]}
-                onChange={(e) => setLayers((p) => ({ ...p, [k]: e.target.checked }))}
-              />
-              <span>{layerLabel(k)}</span>
-            </label>
-          ))}
-
-          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
-            <span className="text-slate-500">Опасность:</span>
-            <span className="inline-flex items-center gap-1">
-              <span className="inline-block size-3 rounded-sm" style={{ background: '#22c55e' }} />
-              <span className="text-xs">низк.</span>
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="inline-block size-3 rounded-sm" style={{ background: '#eab308' }} />
-              <span className="text-xs">средн.</span>
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="inline-block size-3 rounded-sm" style={{ background: '#ef4444' }} />
-              <span className="text-xs">высок.</span>
-            </span>
+        <div className="flex flex-wrap items-center justify-end gap-3 sm:gap-4">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {(['districts', 'incidents', 'cameras', 'objects'] as const).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setLayers((p) => ({ ...p, [k]: !p[k] }))}
+                className={[
+                  'rounded-full px-3 py-1.5 text-sm font-medium transition-all',
+                  layers[k]
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+                ].join(' ')}
+              >
+                {layerLabel(k)}
+              </button>
+            ))}
           </div>
 
-          <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-white text-sm">
+          <div className="hidden h-5 w-px bg-slate-200 lg:block" />
+
+          <div className="flex items-center gap-3 text-sm">
+            <span className="text-slate-400">Опасность:</span>
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-green-500" />
+                <span className="text-slate-500">низк.</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-yellow-500" />
+                <span className="text-slate-500">средн.</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-red-500" />
+                <span className="text-slate-500">высок.</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="hidden h-5 w-px bg-slate-200 lg:block" />
+
+          <div className="flex items-center rounded-full bg-slate-100 p-0.5 text-sm">
             <button
               type="button"
               onClick={() => setBaseMap('streets')}
               className={[
-                'px-3 py-2 font-medium transition',
-                baseMap === 'streets' ? 'bg-slate-900 text-white' : 'hover:bg-slate-50',
+                'rounded-full px-3 py-1.5 font-medium transition-all',
+                baseMap === 'streets'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-900',
               ].join(' ')}
             >
               Схема
@@ -365,8 +377,10 @@ export function MapPage() {
               type="button"
               onClick={() => setBaseMap('satellite')}
               className={[
-                'px-3 py-2 font-medium transition',
-                baseMap === 'satellite' ? 'bg-slate-900 text-white' : 'hover:bg-slate-50',
+                'rounded-full px-3 py-1.5 font-medium transition-all',
+                baseMap === 'satellite'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-900',
               ].join(' ')}
             >
               Спутник
