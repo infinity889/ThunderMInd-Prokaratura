@@ -14,6 +14,7 @@ import { CircleMarker, GeoJSON, MapContainer, Popup, TileLayer, useMap } from 'r
 import type { FeatureCollection, Feature } from 'geojson'
 import { PageShell } from '../_ui/PageShell'
 import { apiFetch } from '../../shared/api/apiClient'
+import { cn } from '../../shared/lib/cn'
 
 function pointInPolygon(point: [number, number], polygon: number[][][]) {
   const [x, y] = point;
@@ -267,14 +268,7 @@ function dangerColors(level: DangerLevel) {
   }
 }
 
-type DistrictCard = {
-  id: string
-  name: string
-  danger: DangerLevel
-  incidentsCount: number
-  camerasCount: number
-  objectsCount: number
-}
+
 
 function layerLabel(k: LayerKey) {
   switch (k) {
@@ -297,6 +291,7 @@ export function MapPage() {
     cameras: true,
     objects: true,
   })
+  const [mapType, setMapType] = useState<'schema' | 'satellite'>('schema')
   const [selectedDistrictId, setSelectedDistrictId] = useState<string | null>(null)
   
   const [districtsFC, setDistrictsFC] = useState<FeatureCollection>({ type: 'FeatureCollection', features: [] })
@@ -379,34 +374,7 @@ export function MapPage() {
     return map
   }, [districtsFC])
 
-  const districtCards = useMemo((): DistrictCard[] => {
-    const cards: DistrictCard[] = []
-    for (const f of districtsFC.features) {
-      const id = (f.properties as { id?: string }).id
-      const name = (f.properties as { name?: string }).name
-      if (!id || !name) continue
-      const danger = districtDanger[id] ?? 'medium'
-      
-      const geom = f.geometry;
-      let incCount = 0, camCount = 0, objCount = 0;
-      
-      if (geom) {
-        incCount = incidents.filter(i => pointInArea([i.lng, i.lat], (geom as any).coordinates as any, geom.type)).length;
-        camCount = cameras.filter(c => pointInArea([c.lng, c.lat], (geom as any).coordinates as any, geom.type)).length;
-        objCount = objects.filter(o => pointInArea([o.lng, o.lat], (geom as any).coordinates as any, geom.type)).length;
-      }
-      
-      cards.push({
-        id,
-        name,
-        danger,
-        incidentsCount: incCount,
-        camerasCount: camCount,
-        objectsCount: objCount,
-      })
-    }
-    return cards
-  }, [districtsFC, districtDanger, incidents, cameras, objects])
+
 
   const updateDistrictDanger = async (id: string, risk_score: number) => {
     try {
@@ -494,37 +462,64 @@ export function MapPage() {
   return (
     <PageShell
       title="Карта"
-      subtitle="Слои: районы, инциденты, видеокамеры и социальные объекты. Кликните по району — справа появится сводка."
       right={
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          {(['districts', 'incidents', 'cameras', 'objects'] as const).map((k) => (
-            <label
-              key={k}
-              className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm hover:bg-slate-50"
-            >
-              <input
-                type="checkbox"
-                checked={layers[k]}
-                onChange={(e) => setLayers((p) => ({ ...p, [k]: e.target.checked }))}
-              />
-              <span>{layerLabel(k)}</span>
-            </label>
-          ))}
+        <div className="flex flex-wrap items-center justify-end gap-3 lg:gap-4">
+          <div className="flex items-center gap-1 rounded-[100px] bg-[#f1f5f9] p-1 border border-slate-200">
+            {(['districts', 'incidents', 'cameras', 'objects'] as const).map((k) => (
+              <button
+                key={k}
+                onClick={() => setLayers((p) => ({ ...p, [k]: !p[k] }))}
+                className={cn(
+                  'rounded-[100px] px-4 py-1.5 text-[13px] font-medium transition outline-none',
+                  layers[k]
+                    ? 'bg-[#0B1221] text-white shadow-md shadow-[#0B1221]/20'
+                    : 'text-slate-600 hover:text-slate-900 bg-transparent hover:bg-slate-200'
+                )}
+              >
+                {layerLabel(k)}
+              </button>
+            ))}
+          </div>
 
-          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
-            <span className="text-slate-500">Опасность:</span>
-            <span className="inline-flex items-center gap-1">
-              <span className="inline-block size-3 rounded-sm" style={{ background: '#22c55e' }} />
-              <span className="text-xs">низк.</span>
+          <div className="hidden h-5 w-px bg-slate-200 xl:block" />
+
+          <div className="hidden items-center gap-3 text-[13px] xl:flex">
+            <span className="text-slate-400">Опасность:</span>
+            <span className="flex items-center gap-1.5">
+              <span className="size-[6px] rounded-full bg-[#22c55e]" />
+              <span className="text-slate-700">низк.</span>
             </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="inline-block size-3 rounded-sm" style={{ background: '#eab308' }} />
-              <span className="text-xs">средн.</span>
+            <span className="flex items-center gap-1.5">
+              <span className="size-[6px] rounded-full bg-[#eab308]" />
+              <span className="text-slate-700">средн.</span>
             </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="inline-block size-3 rounded-sm" style={{ background: '#ef4444' }} />
-              <span className="text-xs">высок.</span>
+            <span className="flex items-center gap-1.5">
+              <span className="size-[6px] rounded-full bg-[#ef4444]" />
+              <span className="text-slate-700">высок.</span>
             </span>
+          </div>
+
+          <div className="hidden h-5 w-px bg-slate-200 xl:block" />
+
+          <div className="flex items-center gap-1 rounded-[100px] bg-[#f1f5f9] p-1 border border-slate-200">
+            <button
+              onClick={() => setMapType('schema')}
+              className={cn(
+                'rounded-[100px] px-3 py-1.5 text-[13px] font-medium transition cursor-pointer',
+                mapType === 'schema' ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+              )}
+            >
+              Схема
+            </button>
+            <button
+              onClick={() => setMapType('satellite')}
+              className={cn(
+                'rounded-[100px] px-3 py-1.5 text-[13px] font-medium transition cursor-pointer',
+                mapType === 'satellite' ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+              )}
+            >
+              Спутник
+            </button>
           </div>
         </div>
       }
@@ -539,10 +534,17 @@ export function MapPage() {
             ]}
           >
             <GeomanControls reloadData={fetchMapData} districtsFC={districtsFC} />
-            <TileLayer
-              attribution="&copy; OpenStreetMap contributors"
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
+            {mapType === 'schema' ? (
+              <TileLayer
+                attribution="&copy; OpenStreetMap contributors"
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+            ) : (
+              <TileLayer
+                attribution="Tiles &copy; Esri"
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+              />
+            )}
 
             {layers.districts && districtsFC.features.length > 0 ? (
               <GeoJSON
@@ -673,61 +675,7 @@ export function MapPage() {
             <div className="text-sm text-slate-600">
               <div className="font-semibold text-slate-900">Районы Атырау</div>
               <div className="mt-2 text-sm text-slate-600">
-                Нажмите на карточку района или кликните по району на карте.
-              </div>
-
-              <div className="mt-3 grid gap-2">
-                {districtCards.map((d) => {
-                  const colors = dangerColors(d.danger)
-                  return (
-                    <button
-                      key={d.id}
-                      type="button"
-                      onClick={() => setSelectedDistrictId(d.id)}
-                      className="group w-full rounded-2xl border border-slate-200 bg-white p-3 text-left hover:bg-slate-50"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold text-slate-900">
-                            {d.name}
-                          </div>
-                          <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                            <span
-                              className="inline-block size-3 rounded-sm"
-                              style={{ background: colors.fill }}
-                              aria-hidden
-                            />
-                            <span className="capitalize">
-                              опасность: {dangerLabel(d.danger)}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="shrink-0 text-xs text-slate-500">ID: {d.id}</div>
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-3 gap-2">
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
-                          <div className="text-[11px] text-slate-500">Инциденты</div>
-                          <div className="mt-0.5 text-base font-semibold text-slate-900">
-                            {d.incidentsCount}
-                          </div>
-                        </div>
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
-                          <div className="text-[11px] text-slate-500">Камеры</div>
-                          <div className="mt-0.5 text-base font-semibold text-slate-900">
-                            {d.camerasCount}
-                          </div>
-                        </div>
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
-                          <div className="text-[11px] text-slate-500">Объекты</div>
-                          <div className="mt-0.5 text-base font-semibold text-slate-900">
-                            {d.objectsCount}
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                  )
-                })}
+                Нажмите на район на карте, чтобы посмотреть подробную информацию об инцидентах, камерах и объектах.
               </div>
 
               <div className="mt-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
