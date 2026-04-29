@@ -137,3 +137,6 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.SessionAuthentication',
     ],
 }
+
+# Ключ от Groq API для AI обработки Excel файлов
+GROQ_API_KEY = "ВАШ_API_КЛЮЧ_GROQ"

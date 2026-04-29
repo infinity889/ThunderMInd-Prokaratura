@@ -26,10 +26,11 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   const base = env.apiBaseUrl?.replace(/\/+$/, '') ?? ''
   const url = `${base}${path.startsWith('/') ? path : `/${path}`}`
   const token = localStorage.getItem('token')
+  const isFormData = init?.body instanceof FormData
   const res = await fetch(url, {
     ...init,
     headers: {
-      'content-type': 'application/json',
+      ...(isFormData ? {} : { 'content-type': 'application/json' }),
       ...(token ? { Authorization: `Token ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
